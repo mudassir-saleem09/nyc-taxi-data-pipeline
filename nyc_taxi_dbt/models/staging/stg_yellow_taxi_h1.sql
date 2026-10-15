@@ -5,7 +5,7 @@ with source as (
 ),
  
 renamed as (
- 
+
     select
         vendorid                   as vendor_id,
         tpep_pickup_datetime       as pickup_datetime,
@@ -32,11 +32,11 @@ renamed as (
         pickup_hour,
         pickup_date,
         pickup_day_of_week,
-        month                       as pickup_month,
+        LPAD(MONTH(pickup_date)::VARCHAR, 2, '0') AS pickup_month,
         is_incomplete_metadata
  
     from source
  
 )
- 
+
 select * from renamed

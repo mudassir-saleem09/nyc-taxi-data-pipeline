@@ -10,6 +10,10 @@ from airflow.providers.amazon.aws.sensors.glue import GlueJobSensor
 from airflow.providers.snowflake.operators.snowflake import SnowflakeOperator
 from airflow.providers.docker.operators.docker import DockerOperator
 from docker.types import Mount
+import os
+
+DBT_PROJECT_PATH = os.getenv("DBT_PROJECT_PATH")
+DBT_PROFILES_PATH = os.getenv("DBT_PROFILES_PATH")
 
 default_args = {
     "owner": "mudassir",
@@ -57,10 +61,6 @@ with DAG(
             FROM @s3_processed_stage
             FILE_FORMAT = (TYPE = PARQUET USE_LOGICAL_TYPE = TRUE)
             MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE;
-
-            UPDATE RAW.YELLOW_TAXI_2026_H1
-            SET month = LPAD(MONTH(pickup_date), 2, '0')
-            WHERE month IS NULL;
         """,
     )
 
@@ -79,14 +79,14 @@ with DAG(
                 # this new container is created by the HOST's Docker engine, not by the
                 # Airflow container. So this path must be the actual Windows host path,
                 # not the path as seen inside the Airflow container.
-                source="C:\\nyc_end_to_end_pipeline\\nyc_taxi_dbt",
+                source=DBT_PROJECT_PATH,
                 target="/usr/app",
                 type="bind",
             ),
             Mount(
                 # profiles.yml lives separately from the dbt project, in the user's
                 # .dbt folder (this is where dbt debug showed it earlier)
-                source="C:\\Users\\USER\\.dbt",
+                source=DBT_PROFILES_PATH,
                 target="/root/.dbt",
                 type="bind",
             ),
@@ -103,12 +103,12 @@ with DAG(
             mount_tmp_dir=False,
             mounts=[
                 Mount(
-                    source="...",
+                    source=DBT_PROJECT_PATH,
                     target="/usr/app",
                     type="bind",
                 ),
                 Mount(
-                    source="...",
+                    source=DBT_PROFILES_PATH,
                     target="/root/.dbt",
                     type="bind",
                 ),

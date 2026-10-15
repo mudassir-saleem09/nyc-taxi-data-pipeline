@@ -69,6 +69,8 @@ x-airflow-common:
     # WARNING: Use _PIP_ADDITIONAL_REQUIREMENTS option ONLY for a quick checks
     # for other purpose (development, test and especially production usage) build/extend Airflow image.
     _PIP_ADDITIONAL_REQUIREMENTS: 'apache-airflow-providers-amazon==8.28.0 apache-airflow-providers-snowflake==5.6.1 apache-airflow-providers-docker==3.14.1'    # The following line can be used to set a custom config file, stored in the local config folder
+    DBT_PROJECT_PATH: ${DBT_PROJECT_PATH}
+    DBT_PROFILES_PATH: ${DBT_PROFILES_PATH}
     # If you want to use it, outcomment it and replace airflow.cfg with the name of your config file
     # AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
   volumes:

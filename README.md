@@ -77,7 +77,7 @@ During initial exploration, several data quality issues were identified and expl
    pip install -r requirements.txt
    ```
 2. Download the NYC Yellow Taxi Parquet files from the NYC TLC and upload them to your S3 raw-data location.
-3. Configure your own AWS and Snowflake credentials (see `.env.example` and `nyc_taxi_dbt/profiles.yml.example` — copy these to real `.env` / `profiles.yml` files, which are gitignored).
+3. Configure your own AWS and Snowflake credentials.
 4. Run the local exploration and transformation scripts under `src/`.
 5. Set up the AWS S3 bucket, Glue job, and Snowflake objects using the SQL/scripts under `sql/` and `glue/`.
 6. Run `dbt run` from the `nyc_taxi_dbt/` folder.

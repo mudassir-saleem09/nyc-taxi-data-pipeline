@@ -110,21 +110,13 @@ venv\Scripts\activate        # Windows (use `source venv/bin/activate` on Linux/
 pip install -r requirements.txt
 ```
 
-### 2. Get the data
-
-Download the NYC Yellow Taxi parquet files (Jan–Jun 2026) from the NYC TLC website into `data/raw/`, then upload them to your S3 raw-data location. To verify the raw row count locally:
-
-```bash
-python src/row_count.py
-```
-
-### 3. AWS setup
+### 2. AWS setup
 
 1. Create the S3 bucket with `raw/` and `processed/` prefixes.
 2. Create an IAM role for Glue (S3 access) and an IAM role for Snowflake (S3 read access to `processed/`).
 3. Create the Glue job `nyc_taxi_glue_transform` (PySpark, `G.1X`, 2 workers) using `glue/glue_transform_script.py`.
 
-### 4. Snowflake setup — run the SQL files **in this order**
+### 3. Snowflake setup — run the SQL files **in this order**
 
 | Order | File | What it does |
 |---|---|---|
@@ -134,7 +126,7 @@ python src/row_count.py
 | 3 | `sql/03_load_processed_data.sql` | `COPY INTO` the raw table from the stage (first load / manual load) |
 | 4 | `sql/04_validate_data.sql` | Basic row-count and sample checks |
 
-### 5. dbt
+### 4. dbt
 
 Create `~/.dbt/profiles.yml` with your Snowflake connection, then:
 
@@ -144,7 +136,7 @@ dbt run
 dbt test
 ```
 
-### 6. Airflow (Docker)
+### 5. Airflow (Docker)
 
 1. Create `airflow/.env` from the example and fill in your paths:
 

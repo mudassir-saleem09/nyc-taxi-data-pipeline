@@ -174,7 +174,6 @@ With the default profile, dbt builds the staging view in the `STAGING` schema an
 
 Built in Power BI on top of the Snowflake mart layer: total trips, total trip amount, average fare, average trip duration, monthly revenue trend, trips by pickup hour / day of week / month, and payment type split. Slicers for month and payment type.
 
-The `.pbix` file is not committed; the screenshot above is in `powerbi/Dashboard.png`.
 
 ## ⚠️ Known Limitations & Planned Improvements
 

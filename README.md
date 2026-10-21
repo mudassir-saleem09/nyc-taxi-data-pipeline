@@ -98,7 +98,7 @@ Raw rows per month:
 
 ## 🚀 Setup & Running the Pipeline
 
-> **Requirements:** Python 3.11+, an AWS account, a Snowflake account, Docker Desktop.
+> **Requirements:** Python 3.12+, an AWS account, a Snowflake account, Docker Desktop.
 >
 > Before you start, replace the placeholders for your own values: S3 bucket name (`nyc-taxi-001` in the Glue script and SQL files), AWS account ID / IAM role ARN in `sql/01_storage_integration.sql`, and AWS region (`ap-south-1`).
 

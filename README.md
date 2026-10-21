@@ -89,7 +89,6 @@ Raw rows per month:
 | May 2026 | 4,090,836 |
 | Jun 2026 | 3,837,248 |
 
-How to reproduce: `python src/row_count.py` for raw counts, the Glue job's CloudWatch logs for the two Glue counts, and `SELECT COUNT(*)` in Snowflake for the last two layers.
 
 ## 💰 Cost-Control Decisions
 

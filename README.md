@@ -70,13 +70,13 @@ Row counts were checked at every layer to make sure no data is silently lost or 
 | After Glue core filters | 21,734,498 |
 | After duration filter (Glue output) | 21,656,435 |
 | Snowflake `RAW.YELLOW_TAXI_2026_H1` | 21,656,435 |
-| dbt mart `fct_trips` | `<fill from Snowflake>` |
+| dbt mart `STAGING_MARTS.FCT_TRIPS` | 21,656,435 |
 
 **1,180,095 rows (~5.2%) were removed as invalid:**
 - 1,102,032 rows by the core filters (negative fares, zero distance, invalid vendors, bad timestamps)
 - 78,063 rows by the trip-duration filter
 
-The Glue output (21,656,435) matches the Snowflake raw table exactly, so no rows are lost or duplicated between S3 and Snowflake.
+The Glue output (21,656,435) matches the Snowflake raw table and the dbt mart exactly, so no rows are lost or duplicated between S3, Snowflake and dbt.
 
 Raw rows per month:
 
@@ -136,16 +136,11 @@ dbt run
 dbt test
 ```
 
+With the default profile, dbt builds the staging view in the `STAGING` schema and the mart `fct_trips` in `STAGING_MARTS` (dbt appends the custom schema name to the profile schema).
+
 ### 5. Airflow (Docker)
 
-1. Create `airflow/.env` from the example and fill in your paths:
-
-   ```bash
-   cd airflow
-   cp .env.example .env
-   ```
-
-   `airflow/.env.example`:
+1. Create a file named `airflow/.env` (it is gitignored, so it is never committed) with the following content, using your own paths:
 
    ```
    AIRFLOW_UID=50000
@@ -201,6 +196,6 @@ Being upfront about what this project does *not* do yet:
 ├── glue/                  # AWS Glue job script
 ├── sql/                   # Snowflake setup, load, and validation scripts (numbered)
 ├── nyc_taxi_dbt/          # dbt project (staging + mart models + tests)
-├── airflow/               # Airflow DAG, docker-compose, .env.example
+├── airflow/               # Airflow DAG + docker-compose setup
 └── powerbi/               # Dashboard screenshot
 ```

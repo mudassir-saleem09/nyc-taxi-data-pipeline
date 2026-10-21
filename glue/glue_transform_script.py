@@ -38,6 +38,10 @@ print(f"Row Count After Core Filters: {df.count()}")
 df = df.withColumn(
     "is_incomplete_metadata",
     F.col("RatecodeID").isNull()
+    & F.col("passenger_count").isNull()
+    & F.col("store_and_fwd_flag").isNull()
+    & F.col("congestion_surcharge").isNull()
+    & F.col("Airport_fee").isNull()
 )
 
 # --- 4. payment_type cleanup ---

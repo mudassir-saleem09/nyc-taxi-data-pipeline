@@ -1,6 +1,6 @@
 # 🚖 NYC Yellow Taxi — End-to-End Data Engineering Pipeline
 
-An end-to-end, production-style data pipeline built on 6 months (Jan–Jun 2026) of NYC Yellow Taxi trip data — ~21.6 million rows — covering ingestion, distributed processing, cloud storage, a cloud data warehouse, analytics engineering, orchestration, and BI reporting.
+An end-to-end data pipeline built on 6 months (Jan–Jun 2026) of NYC Yellow Taxi trip data — **22.8 million raw rows, ~21.66 million after cleaning** — covering ingestion, distributed processing, cloud storage, a cloud data warehouse, analytics engineering, orchestration, and BI reporting.
 
 ## 📐 Architecture
 
@@ -17,10 +17,10 @@ NYC TLC Parquet Files (local download)
    AWS S3 (processed data, partitioned by month)
             │
             ▼
-   Snowflake (Storage Integration + COPY INTO)
+   Snowflake (Storage Integration + External Stage + COPY INTO)
             │
             ▼
-   dbt (staging → marts, medallion-style layering)
+   dbt (staging → marts layering)
             │
             ▼
    Power BI Dashboard
@@ -32,76 +32,184 @@ NYC TLC Parquet Files (local download)
 
 | Layer | Technology |
 |---|---|
-| Ingestion / local processing | Python, PySpark |
+| Local exploration / prototyping | Python, PySpark |
 | Cloud storage (data lake) | AWS S3 |
 | Cloud ETL | AWS Glue (managed Spark) |
 | Data warehouse | Snowflake |
 | Transformation / analytics engineering | dbt |
 | Orchestration | Apache Airflow (Docker) |
 | BI / Dashboard | Power BI |
-| IAM / Security | AWS IAM Roles, Snowflake Storage Integration |
+| IAM / Security | AWS IAM Role, Snowflake Storage Integration (no access keys in code) |
 
 ## 📊 What the pipeline does
 
-1. **Ingests** 6 months of raw NYC Yellow Taxi trip data (~21.6M raw rows) into a partitioned S3 data lake.
-2. **Cleans and transforms** the data with PySpark on AWS Glue: filters invalid records (negative fares, zero-distance trips, bad timestamps), standardizes categorical codes, and adds derived columns (trip duration, revenue, pickup hour/day).
-3. **Loads** the cleaned data into Snowflake via a Storage Integration (S3 → Snowflake, no manual upload).
-4. **Transforms** the warehouse data with dbt into a business-ready fact table (`fct_trips`), following a staging → marts layering pattern.
-5. **Visualizes** the results in an interactive Power BI dashboard (trips by hour/day/month, revenue by payment type).
-6. **Orchestrates** the entire flow with Airflow, so the pipeline can be re-run end-to-end with a single trigger.
+1. **Ingests** 6 months of raw NYC Yellow Taxi data (22.8M rows) into an S3 data lake. *(The download from NYC TLC and the upload to S3 are manual one-time steps; the automated pipeline starts at the Glue job.)*
+2. **Cleans and transforms** the data with PySpark on AWS Glue: filters invalid records (negative fares, zero-distance trips, invalid vendors, bad timestamps, duration outliers), standardizes categorical codes, and adds derived columns (trip duration, revenue, pickup hour/day).
+3. **Loads** the cleaned data into Snowflake through a Storage Integration and an external stage (S3 → Snowflake, no manual file upload).
+4. **Transforms** the warehouse data with dbt into a business-ready fact table (`fct_trips`) using a staging → marts layering pattern, with dbt tests for data quality.
+5. **Visualizes** the results in a Power BI dashboard (trips by hour / day / month, revenue trend, payment type split).
+6. **Orchestrates** Glue → Snowflake load → `dbt run` → `dbt test` with Airflow, so the pipeline can be re-run with a single trigger.
 
 ## 🔍 Data Quality Highlights
 
-During initial exploration, several data quality issues were identified and explicitly handled rather than blindly dropped:
+During exploration, several data quality issues were identified and explicitly handled rather than blindly dropped:
 
-- **~29% of rows** had a consistent block of missing fields (`RatecodeID`, `passenger_count`, `store_and_fwd_flag`, `congestion_surcharge`, `Airport_fee`) that were always missing together and always paired with `payment_type = 0`. Rather than dropping ~29% of the data, these rows are **flagged** (`is_incomplete_metadata`) so downstream analysis can account for them.
+- **~29% of rows** had a consistent block of missing fields (`RatecodeID`, `passenger_count`, `store_and_fwd_flag`, `congestion_surcharge`, `Airport_fee`) that were always missing together and always paired with `payment_type = 0`. Rather than dropping that much data, these rows are **flagged** (`is_incomplete_metadata`) so downstream analysis can include or exclude them. In the dashboard they appear as the **"Unknown"** payment type.
 - **39,463 rows** had a negative `fare_amount` — filtered out as invalid.
 - **125,738 rows** had zero `trip_distance` — filtered out as invalid.
-- Only **1 row** genuinely had a dropoff time before its pickup time (an initial exploration script had an inverted comparison that misreported this as ~3.6M rows — caught and corrected).
-- `VendorID` values of `6` and `7` (in addition to the documented `1` and `2`) were found in the data and confirmed as valid, newer provider codes.
+- Only **1 row** genuinely had a dropoff time before its pickup time (an early exploration script had an inverted comparison that misreported this as ~3.6M rows — caught and corrected).
+- `VendorID` values `6` and `7` (in addition to the documented `1` and `2`) were found in the data and confirmed as valid, newer provider codes.
+
+## 🧮 Row Count Reconciliation
+
+Row counts were checked at every layer to make sure no data is silently lost or duplicated.
+
+| Layer | Rows |
+|---|---|
+| Raw NYC TLC data (Jan–Jun 2026, 6 parquet files) | 22,836,530 |
+| After Glue core filters | 21,734,498 |
+| After duration filter (Glue output) | 21,656,435 |
+| Snowflake `RAW.YELLOW_TAXI_2026_H1` | 21,656,435 |
+| dbt mart `fct_trips` | `<fill from Snowflake>` |
+
+**1,180,095 rows (~5.2%) were removed as invalid:**
+- 1,102,032 rows by the core filters (negative fares, zero distance, invalid vendors, bad timestamps)
+- 78,063 rows by the trip-duration filter
+
+The Glue output (21,656,435) matches the Snowflake raw table exactly, so no rows are lost or duplicated between S3 and Snowflake.
+
+Raw rows per month:
+
+| Month | Raw rows |
+|---|---|
+| Jan 2026 | 3,724,889 |
+| Feb 2026 | 3,399,866 |
+| Mar 2026 | 3,952,451 |
+| Apr 2026 | 3,831,240 |
+| May 2026 | 4,090,836 |
+| Jun 2026 | 3,837,248 |
+
+How to reproduce: `python src/row_count.py` for raw counts, the Glue job's CloudWatch logs for the two Glue counts, and `SELECT COUNT(*)` in Snowflake for the last two layers.
 
 ## 💰 Cost-Control Decisions
 
 - Snowflake warehouse sized `XSMALL` with `AUTO_SUSPEND = 60` seconds.
-- AWS Glue jobs run on the minimum practical worker configuration (`G.1X`, 2 workers) with a job timeout as a safety net.
-- PySpark transformation logic was fully developed and tested **locally** before being ported to Glue, to avoid iterating (and paying) on the cloud.
+- AWS Glue job runs on a minimal worker configuration (`G.1X`, 2 workers) with a job timeout as a safety net.
+- PySpark transformation logic was developed and tested **locally** before being ported to Glue, to avoid iterating (and paying) on the cloud.
 
-## 🚀 Running the pipeline
+## 🚀 Setup & Running the Pipeline
 
-> Requires: Python 3.11+, an AWS account, a Snowflake account, and Docker Desktop.
+> **Requirements:** Python 3.11+, an AWS account, a Snowflake account, Docker Desktop.
+>
+> Before you start, replace the placeholders for your own values: S3 bucket name (`nyc-taxi-001` in the Glue script and SQL files), AWS account ID / IAM role ARN in `sql/01_storage_integration.sql`, and AWS region (`ap-south-1`).
 
-1. Clone the repo and create a virtual environment:
+### 1. Local environment
+
+```bash
+python -m venv venv
+venv\Scripts\activate        # Windows (use `source venv/bin/activate` on Linux/macOS)
+pip install -r requirements.txt
+```
+
+### 2. Get the data
+
+Download the NYC Yellow Taxi parquet files (Jan–Jun 2026) from the NYC TLC website into `data/raw/`, then upload them to your S3 raw-data location. To verify the raw row count locally:
+
+```bash
+python src/row_count.py
+```
+
+### 3. AWS setup
+
+1. Create the S3 bucket with `raw/` and `processed/` prefixes.
+2. Create an IAM role for Glue (S3 access) and an IAM role for Snowflake (S3 read access to `processed/`).
+3. Create the Glue job `nyc_taxi_glue_transform` (PySpark, `G.1X`, 2 workers) using `glue/glue_transform_script.py`.
+
+### 4. Snowflake setup — run the SQL files **in this order**
+
+| Order | File | What it does |
+|---|---|---|
+| 1 | `sql/01_storage_integration.sql` | Creates `s3_taxi_integration` (run as `ACCOUNTADMIN`) |
+| — | *(manual step)* | Run `DESC INTEGRATION s3_taxi_integration;`, copy `STORAGE_AWS_IAM_USER_ARN` and `STORAGE_AWS_EXTERNAL_ID`, and paste them into the **trust policy** of the Snowflake IAM role in AWS. Without this, Snowflake cannot read S3. |
+| 2 | `sql/02_snowflake_setup.sql` | Creates database, warehouse, schemas (`RAW`, `STAGING`, `MARTS`), the external stage `S3_PROCESSED_STAGE`, and the raw table |
+| 3 | `sql/03_load_processed_data.sql` | `COPY INTO` the raw table from the stage (first load / manual load) |
+| 4 | `sql/04_validate_data.sql` | Basic row-count and sample checks |
+
+### 5. dbt
+
+Create `~/.dbt/profiles.yml` with your Snowflake connection, then:
+
+```bash
+cd nyc_taxi_dbt
+dbt run
+dbt test
+```
+
+### 6. Airflow (Docker)
+
+1. Create `airflow/.env` from the example and fill in your paths:
+
+   ```bash
+   cd airflow
+   cp .env.example .env
    ```
-   python -m venv venv
-   venv\Scripts\activate
-   pip install -r requirements.txt
+
+   `airflow/.env.example`:
+
    ```
-2. Download the NYC Yellow Taxi Parquet files from the NYC TLC and upload them to your S3 raw-data location.
-3. Configure your own AWS and Snowflake credentials.
-4. Run the local exploration and transformation scripts under `src/`.
-5. Set up the AWS S3 bucket, Glue job, and Snowflake objects using the SQL/scripts under `sql/` and `glue/`.
-6. Run `dbt run` from the `nyc_taxi_dbt/` folder.
-7. Start Airflow: `cd airflow && docker-compose up -d`, then trigger the `nyc_taxi_pipeline` DAG from the UI at `localhost:8081`.
-8. A Power BI dashboard was built on top of the Snowflake mart layer. Dashboard screenshots are included in the documentation.
+   AIRFLOW_UID=50000
+   # These must be HOST machine paths (not paths inside the container)
+   DBT_PROJECT_PATH=C:/path/to/nyc-taxi-data-pipeline/nyc_taxi_dbt
+   DBT_PROFILES_PATH=C:/Users/<your-user>/.dbt
+   ```
 
-## Pipeline Execution Order
+2. Start Airflow:
 
-1. Upload raw NYC Taxi Parquet files to S3
-2. Trigger AWS Glue PySpark job
-3. Write cleaned data to processed S3
-4. Load processed data into Snowflake
-5. Run dbt transformations
-6. Run dbt data quality tests
+   ```bash
+   docker-compose up -d
+   ```
+
+3. Open `http://localhost:8081` (default login `airflow` / `airflow`) and create two connections under **Admin → Connections**:
+   - `aws_default` — AWS credentials / role with permission to run Glue jobs
+   - `snowflake_default` — your Snowflake account, user, warehouse, database `NYC_TAXI_DB`, schema `RAW`
+4. Unpause and trigger the `nyc_taxi_pipeline` DAG.
+
+### Pipeline execution order
+
+1. Upload raw NYC Taxi parquet files to S3 *(manual)*
+2. Trigger AWS Glue PySpark job *(Airflow: `trigger_glue_job` + `wait_for_glue`)*
+3. Glue writes cleaned data to processed S3, partitioned by month
+4. Load processed data into Snowflake *(Airflow: `load_to_snowflake`)*
+5. Run dbt transformations *(Airflow: `dbt_run`)*
+6. Run dbt data quality tests *(Airflow: `dbt_test`)*
 7. Consume marts in Power BI
+
+## 📈 Dashboard
+
+Built in Power BI on top of the Snowflake mart layer: total trips, total trip amount, average fare, average trip duration, monthly revenue trend, trips by pickup hour / day of week / month, and payment type split. Slicers for month and payment type.
+
+The `.pbix` file is not committed; the screenshot above is in `powerbi/Dashboard.png`.
+
+## ⚠️ Known Limitations & Planned Improvements
+
+Being upfront about what this project does *not* do yet:
+
+- **Full reload, not incremental.** The Snowflake load truncates and reloads the whole table each run.
+- **Manual ingestion.** Downloading from NYC TLC and uploading to S3 is not automated.
+- **No dimension tables.** `fct_trips` has no `dim_zone` / `dim_date`, so there is no borough-level analysis yet.
+- **Money columns are `FLOAT`.** Planned: `NUMBER(10,2)`.
+- **`fct_trips` is a view by default.** Planned: materialize as a table for faster BI queries.
+- **No outlier caps** on fare and distance beyond the trip-duration filter.
+- **Local-only Airflow** (Docker socket mount, default credentials) — not production-hardened.
 
 ## 📁 Project Structure
 
 ```
 ├── data/raw/              # Raw parquet files (not committed)
-├── src/                   # Local exploration & PySpark scripts
+├── src/                   # Local exploration & PySpark prototyping scripts
 ├── glue/                  # AWS Glue job script
-├── sql/                   # Snowflake setup, load, and fix scripts
-├── nyc_taxi_dbt/          # dbt project (staging + mart models)
-├── airflow/               # Airflow DAGs + Docker setup
-└── powerbi/               # Power BI dashboard file
+├── sql/                   # Snowflake setup, load, and validation scripts (numbered)
+├── nyc_taxi_dbt/          # dbt project (staging + mart models + tests)
+├── airflow/               # Airflow DAG, docker-compose, .env.example
+└── powerbi/               # Dashboard screenshot
 ```
